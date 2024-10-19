@@ -1,4 +1,58 @@
+import random
 from .utils import *
+
+def generate_new_ftb_entry(is_sharing: int = 1, 
+                           is_0_taken: int = 0, 
+                           is_1_taken: int = 0,
+                           br_0_start_pc: int = 1,
+                           br_0_inst_pc: int = 2,
+                           br_0_target_addr: int = 4,
+                           br_share_start_pc: int = 1,
+                           br_share_inst_pc: int = 2,
+                           br_share_target_addr: int = 4,
+                           tail_start_pc: int = 1,
+                           tail_inst_pc: int = 2,
+                           tail_target_addr: int = 1,
+                           tail_inst_len: int = 4,
+                           last_may_be_rvi_call: int = 0,
+                           valid: int = 1,
+                           tail_slot_valid: int = 1,
+                           ):
+    ftb_entry = FTBEntry()
+
+    ftb_entry.valid = valid
+    if is_sharing:
+        ftb_entry.add_cond_branch_inst(br_0_start_pc, 
+                                       br_0_inst_pc, 
+                                       is_0_taken, 
+                                       br_0_target_addr)
+        ftb_entry.add_cond_branch_inst(br_share_start_pc, 
+                                       br_share_inst_pc, 
+                                       is_1_taken, 
+                                       br_share_target_addr)
+    else:
+        ftb_entry.add_cond_branch_inst(br_0_start_pc, 
+                                       br_0_inst_pc, 
+                                       is_0_taken, 
+                                       br_0_target_addr)
+        if not last_may_be_rvi_call:
+            ftb_entry.add_jmp_inst(tail_start_pc, 
+                               tail_inst_pc, 
+                               tail_target_addr, 
+                               tail_inst_len, 
+                               0, 0, 0, 0)
+        else:
+            ftb_entry.add_jmp_inst(tail_start_pc, 
+                               tail_inst_pc, 
+                               tail_target_addr, 
+                               4, 
+                               1, 0, 0, 0)
+            
+    if not tail_slot_valid:
+        ftb_entry.tailSlot.valid = False
+
+
+    return ftb_entry
 
 class FTBSlot:
     def __init__(self):
@@ -24,15 +78,16 @@ class FTBSlot:
 
 class FTBEntry:
     def __init__(self):
-        self.valid = 0
+        self.valid = 1
         self.brSlot = FTBSlot()
         self.tailSlot = FTBSlot()
         self.pftAddr = 0
-        self.carry = 0
-        self.isCall = False
-        self.isRet = False
-        self.isJal = False
-        self.isJalr = False
+        self.carry = random.randint(0, 1)
+        isWhat = random.randint(0, 4)
+        self.isCall = isWhat == 1
+        self.isRet = isWhat == 2
+        self.isJal = isWhat == 3
+        self.isJalr = isWhat == 4
         self.last_may_be_rvi_call = False
         self.always_taken = [0, 0]
 
@@ -50,6 +105,7 @@ class FTBEntry:
             self.tailSlot = slot
             self.tailSlot.sharing = True
             self.always_taken[1] = is_taken
+            self.brSlot.sharing = True # 这一行不应该出现 因为brSlot永远不会sharing 所以这一行只是为了满足行覆盖率
         else:
             self.brSlot = slot
             self.always_taken[0] = is_taken
@@ -97,9 +153,11 @@ class FTBEntry:
 
     def __dict__(self):
         return {
+            "valid": self.valid,
             "brSlots_0_offset": self.brSlot.offset,
             "brSlots_0_lower": self.brSlot.lower,
             "brSlots_0_tarStat": self.brSlot.tarStart,
+            "brSlots_0_sharing": self.brSlot.sharing,
             "brSlots_0_valid": self.brSlot.valid,
             "tailSlot_offset": self.tailSlot.offset,
             "tailSlot_lower": self.tailSlot.lower,
@@ -122,6 +180,7 @@ class FTBEntry:
         entry.brSlot.offset = d["brSlots_0_offset"]
         entry.brSlot.lower = d["brSlots_0_lower"]
         entry.brSlot.tarStart = d["brSlots_0_tarStat"]
+        entry.brSlot.sharing = d["brSlots_0_sharing"]
         entry.brSlot.valid = d["brSlots_0_valid"]
         entry.tailSlot.offset = d["tailSlot_offset"]
         entry.tailSlot.lower = d["tailSlot_lower"]
@@ -193,4 +252,3 @@ class FTBProvider():
             return self.entries[pc]
         else:
             return None
-

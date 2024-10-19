@@ -1,6 +1,5 @@
 from mlvp import *
 from random import random
-from .bundle import *
 from .config import *
 from .utils import *
 from .executor import Executor
@@ -284,7 +283,7 @@ class FTQ:
                 fallthrough_addr += inst_len
                 self.executor.next_inst()
 
-        ftb_entry.valid = True
+        ftb_entry.valid = 1
         ftb_entry.pftAddr = get_pftaddr(fallthrough_addr)
         ftb_entry.carry = get_pftaddr_carry(pc, fallthrough_addr)
 

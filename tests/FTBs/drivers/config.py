@@ -3,7 +3,8 @@ MAX_CYCLE = 30000
 
 import os
 ROOT_PATH = os.path.dirname(os.path.abspath(__file__)) + "/../../.."
-DUT_PATH = ROOT_PATH + "/out/picker_out_uFTB"
+uFTB_DUT_PATH = ROOT_PATH + "/out/picker_out_uFTB"
+FTB_DUT_PATH = ROOT_PATH + "/out/picker_out_FTB"
 UTILS_PATH = ROOT_PATH + "/utils"
 RROGRAM_FORDER_PATH = UTILS_PATH + "/ready-to-run"
 PROGRAM_PATH = RROGRAM_FORDER_PATH + "/" + PROGRAM_NAME
@@ -18,9 +19,13 @@ RESET_VECTOR = 0x80000000
 UFTB_WAYS_NUM = 32
 UFTB_TAG_SIZE = 16
 
+FTB_BANK_WAYS_NUM = 4
+FTB_BANK_SETS_NUM = 512
+FTB_TAG_BITS = 20
+FTB_IDX_BITS = 9
 
 TAR_OVF = 1
 TAR_UDF = 2
 TAR_FIT = 0
 
-
+SRAM_READY_DELAY = 1000

@@ -1,25 +1,30 @@
-import itertools
 import mlvp
 import logging
 
 import os
 os.sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/..")
+os.sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/../../")
 
-from env.utils import gen_update_request
-from env.ftb_way import generate_new_ftb_entry
-from env.bundle import *
+from drivers.utils import gen_update_request
+from drivers.ftb_way import generate_new_ftb_entry
+from drivers.config import *
+
 from env.bpu_top import *
-from env.config import *
+from env.bundle import *
 
-os.sys.path.append(DUT_PATH)
+os.sys.path.append(uFTB_DUT_PATH)
 
 from UT_FauFTB import *
 
-def set_imm_mode(uFTB):
+def set_imm_mode(uFTB, i: bool = False):
     imm_mode = uFTB.io_s0_fire_0.xdata.Imme
     need_to_write_imm = ["io_s0_fire_0", "io_s0_fire_1", "io_s0_fire_2", "io_s0_fire_3",
-                        "io_s1_fire_0", "io_s2_fire_0", "io_in_bits_s0_pc_0", "io_in_bits_s0_pc_1",
-                        "io_in_bits_s0_pc_2", "io_in_bits_s0_pc_3", "reset"]
+                        "io_s1_fire_0", "io_s2_fire_0", "io_in_bits_s0_pc_0", 
+                        "io_in_bits_s0_pc_1", "io_in_bits_s0_pc_2", "io_in_bits_s0_pc_3", 
+                        "reset"]
+    if i:
+        need_to_write_imm.remove("reset")
+
     for name in need_to_write_imm:
         getattr(uFTB, name).xdata.SetWriteMode(imm_mode)
 
@@ -28,9 +33,11 @@ from mlvp.reporter import *
 
 def test_uftb_func(request):
     # Create DUT
+
     uFTB = DUTFauFTB(waveform_filename="report/uftb_func.fst", 
                      coverage_filename="report/uftb_func_coverage.dat")
     uFTB.init_clock("clock")
+    print(uFTB.clock)
     set_imm_mode(uFTB)
 
     g1 = fc.CovGroup("control signal")
@@ -67,7 +74,7 @@ def test_uftb_func(request):
     pred_stat.summary()
     set_func_coverage(request, [g1, g2])
     set_line_coverage(request, "report/uftb_func_coverage.dat")
-    
+
 async def run(uFTB):
 
     uFTB_update = UpdateBundle.from_prefix("io_update_").set_name("uFTB_update").bind(uFTB)
@@ -102,9 +109,10 @@ async def run(uFTB):
     await ftb_update_test_2(bpu)
     await ftb_update_test_3(bpu)
     await ftb_update_test_4(bpu)
-    # await set_io_out_test(bpu)
+    await ftb_update_test_5(bpu)
+    await line_cov(bpu)
 
-    await ClockCycles(uFTB, MAX_CYCLE)
+    # await ClockCycles(uFTB, MAX_CYCLE)
 
 
 async def control_signal_test_1(bpu):
@@ -799,27 +807,36 @@ async def always_taken_test_3(bpu):
 async def update_control_test_1(bpu):
     await bpu.reset()
 
-    entry_before = generate_new_ftb_entry(is_sharing = 1)
-    entry_after = generate_new_ftb_entry(is_sharing = 0)
+    entry_before = tuple((generate_new_ftb_entry(is_sharing=1) for _ in range(32)))
+    entry_after = tuple((generate_new_ftb_entry(is_sharing=0) for _ in range(32)))
 
-    #         pc          update_request
-    cases = ((0x0,        gen_update_request(0x80000010, entry_before, (1, 1), valid = True)),
-             (0x80000010, None),
-             (0x80000010, None),
-             (0x80000010, gen_update_request(0x80000010, entry_after, (1, 1), valid = False)),
-             (0x80000010, None),
-             (0x80000010, None),
-             (0x80000010, gen_update_request(0x80000010, entry_after, (1, 1), valid = True)),
-             (0x80000010, None),
-             (0x80000010, None),
-             (0x80000010, None),)
+    case_part_1 = tuple(((0x1000, 
+                          gen_update_request(0x10 * i, entry_before[i], (1, 1), valid = True)) 
+                          for i in range(32)))
+    case_part_2 = tuple(((0x10 * i, 
+                          None) 
+                          for i in range(32)))
+    case_part_3 = tuple(((0x1000, 
+                          gen_update_request(0x10 * i, entry_after[i], (1, 1), valid = False)) 
+                          for i in range(32)))
+    case_part_4 = tuple(((0x10 * i, 
+                          None) 
+                          for i in range(32)))
+    case_part_5 = tuple(((0x1000, 
+                          gen_update_request(0x10 * i, entry_after[i], (1, 1), valid = True)) 
+                          for i in range(32)))
+    case_part_6 = tuple(((0x10 * i, 
+                          None) 
+                          for i in range(32)))
+
+    cases = case_part_1 + case_part_2 + case_part_3 + case_part_4 + case_part_5 + case_part_6 
 
     for i in range(len(cases)):
         output, _ = await bpu.drive_once(cases[i][0], cases[i][1])
 
-        if i < 3:
+        if (i < 32) or (i >= 64 and i < 96) or (i >= 128 and i < 160):
             assert output["s1"]["full_pred"]["hit"] == 0
-        elif i >= 3 and i < 9:
+        elif (i >= 32 and i < 64) or (i >= 96 and i < 128):
             assert output["s1"]["full_pred"]["hit"] == 1
             assert output["s1"]["full_pred"]["slot_valids_0"] == 1
             assert output["s1"]["full_pred"]["slot_valids_1"] == 1
@@ -971,37 +988,69 @@ async def ftb_update_test_4(bpu):
     info("[FTB项更新4] update not hit, LRU not update test [pass]")
     # await ClockCycles(uFTB, MAX_CYCLE)
 
-async def set_io_out_test(bpu):
+async def ftb_update_test_5(bpu):
     await bpu.reset()
-    
-    output, _ = await bpu.drive_once(0, None, s1_fire = 1, s2_fire = 1)
-    await bpu.io_set()
-    output, _ = await bpu.drive_once(0, None, s1_fire = 1, s2_fire = 1)
 
-    info("[IO函数测试] set_io_out_ test [pass]")
-    # await ClockCycles(uFTB, MAX_CYCLE)
+    entrys = tuple((generate_new_ftb_entry(is_sharing=0) for _ in range(32)))
 
-async def replacer_touch_ways_0_valid_REG_test(bpu):
-    await bpu.reset()
-    
-    entrys_1 = tuple((generate_new_ftb_entry() for _ in range(32)))
-
-    case_part_1 = tuple(((0x10000, 
-                          gen_update_request(0x10 * i, entrys_1[i], (1, 1))) 
+    case_part_1 = tuple(((0x1000, 
+                          gen_update_request(0x10 * i, entrys[i], (1, 1))) 
                           for i in range(32)))
-    case_part_2 = tuple(((0x10 * i, 
-                          gen_update_request(0x10 * i, entrys_1[i], (1, 1), valid = 0)) 
-                          for i in range(32)))
+    case_part_2 = tuple(((0x10 * i, None) for i in range(32)))
 
     cases = case_part_1 + case_part_2
 
     for i in range(len(cases)):
-        output, _ = await bpu.drive_once(cases[i][0], cases[i][1], s1_fire = 1)
+        output, _ = await bpu.drive_once(cases[i][0], cases[i][1])
 
         if i < 32:
             assert output["s1"]["full_pred"]["hit"] == 0
-        elif i >= 32 and i < 48:
+        else:
             assert output["s1"]["full_pred"]["hit"] == 1
+            assert output["s1"]["full_pred"]["slot_valids_0"] == 1
+            assert output["s1"]["full_pred"]["slot_valids_1"] == 1
+            assert output["s1"]["full_pred"]["br_taken_mask_0"] == 1
+            assert output["s1"]["full_pred"]["br_taken_mask_1"] == 1
 
-    info("[FTB项更新4] replacer_touch_ways_0_valid_REG test [pass]")
+    info("[FTB项更新5] update not sharing way test [pass]")
     # await ClockCycles(uFTB, MAX_CYCLE)
+
+async def line_cov(bpu):
+    await bpu.reset()
+
+    entrys_1 = tuple((generate_new_ftb_entry(is_sharing=0, 
+                                           br_0_start_pc = 1 << 12, 
+                                           br_0_target_addr = 2 << 12) for _ in range(1)))
+    
+    entrys_2 = tuple((generate_new_ftb_entry(is_sharing=0, 
+                                           br_0_start_pc = 2 << 12, 
+                                           br_0_target_addr = 1 << 12) for _ in range(1)))
+    
+    entrys_3 = tuple((generate_new_ftb_entry(is_sharing=0, 
+                                           br_0_start_pc = 1 << 12, 
+                                           br_0_target_addr = 1 << 12) for _ in range(1)))
+    
+    entrys = entrys_1 + entrys_2 + entrys_3
+
+    case_part_1 = tuple(((0x1000, 
+                          gen_update_request(0x10 * i, entrys[i], (1, 1))) 
+                          for i in range(3)))
+    case_part_2 = tuple(((0x10 * i, None) for i in range(3)))
+
+    cases = case_part_1 + case_part_2
+
+    for i in range(len(cases)):
+        output, _ = await bpu.drive_once(cases[i][0], cases[i][1])
+
+        if i < 3:
+            assert output["s1"]["full_pred"]["hit"] == 0
+        else:
+            assert output["s1"]["full_pred"]["hit"] == 1
+            assert output["s1"]["full_pred"]["slot_valids_0"] == 1
+            assert output["s1"]["full_pred"]["slot_valids_1"] == 1
+            assert output["s1"]["full_pred"]["br_taken_mask_0"] == 1
+            assert output["s1"]["full_pred"]["br_taken_mask_1"] == 1
+
+    info("[FTB项更新5] io_update_bits_ftb_entry_brSlots_0_tarStat coverage [pass]")
+    # await ClockCycles(uFTB, MAX_CYCLE)
+
