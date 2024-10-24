@@ -5,6 +5,7 @@ import os
 ROOT_PATH = os.path.dirname(os.path.abspath(__file__)) + "/../../.."
 uFTB_DUT_PATH = ROOT_PATH + "/out/picker_out_uFTB"
 FTB_DUT_PATH = ROOT_PATH + "/out/picker_out_FTB"
+FTB_fix_DUT_PATH = ROOT_PATH + "/out/picker_out_FTB_fix"
 UTILS_PATH = ROOT_PATH + "/utils"
 RROGRAM_FORDER_PATH = UTILS_PATH + "/ready-to-run"
 PROGRAM_PATH = RROGRAM_FORDER_PATH + "/" + PROGRAM_NAME
