@@ -87,7 +87,7 @@ async def run(FTB):
     await control_signal_test_1(bpu)
     await control_signal_test_2(bpu)
     await control_signal_test_3(bpu)
-    # reset bug here
+    # # reset bug here
     await reset_bug(bpu) 
     await control_signal_test_4(bpu)
     await control_signal_test_5(bpu)
